@@ -34,6 +34,14 @@ ui <- fluidPage(
 
 #### Server ####
 server <- function(input, output, session) {
+  autoUpdate <- reactiveTimer(intervalMs = 1000)
+
+  observe({
+    autoUpdate()
+
+    initiative$df <<- initiative$df
+  })
+
   observeEvent(input$reset, {
     initiative$df <<- data.frame(Character = character(),
                                  Initiative = double(),
