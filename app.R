@@ -6,7 +6,8 @@ if (file.exists('initiative.Rda')) {
 } else {
   initiative <- reactiveValues(df = data.frame(Character = character(),
                                                Initiative = double(),
-                                               Order = integer()))
+                                               Order = integer(),
+                                               needUI = integer()))
 }
 
 onStop(function() {
@@ -45,15 +46,17 @@ server <- function(input, output, session) {
   observeEvent(input$reset, {
     initiative$df <<- data.frame(Character = character(),
                                  Initiative = double(),
-                                 Order = integer())
+                                 Order = integer(),
+                                 needUI = integer())
   })
 
   observeEvent(input$addChar, {
-    if (input$charName != '') {
+    if (input$charName != '' & is.nan(input$initVal)) {
       initiative$df <<- rbind(initiative$df,
                               data.frame(Character = input$charName,
                                          Initiative = input$initVal,
-                                         Order = -1))
+                                         Order = -1,
+                                         needUI = 1))
       updateTextInput(session, 'charName', value = '')
       updateNumericInput(session, 'initVal', value = NaN)
     }
