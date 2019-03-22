@@ -1,35 +1,32 @@
 library(shiny)
+library(shinyjs)
 library(plotly)
 
-if (file.exists('initiative.Rda')) {
-  load('initiative.Rda')
-} else {
-  initiative <- reactiveValues(df = data.frame(Character = character(),
-                                               Initiative = double(),
-                                               Order = integer()))
-}
+options(stringsAsFactors = FALSE)
 
-onStop(function() {
-  save(initiative, file = 'initiative.Rda')
-})
+initiative <- reactiveValues(df = data.frame(
+  Character = character(),
+  Initiative = double(),
+  Turn = character()
+))
 
 #### UI ####
 ui <- fluidPage(
+  useShinyjs(),
   fluidRow(
     column(6,
            tableOutput('table')),
     column(6,
-           textInput('charName', 'Name:', ''),
-           numericInput('initVal', 'Initiative', NaN),
-           actionButton('addChar', 'Add'))
+      textInput('charName', 'Name:', ''),
+      numericInput('initVal', 'Initiative', NaN),
+      actionButton('addChar', 'Add')
+    )
   ),
 
-  fluidRow(
-    column(1,
-           actionButton('next', 'Next')),
-    column(1,
-           actionButton('reset', 'Reset'))
-  ),
+  fluidRow(column(1,
+                  actionButton('nextTurn', 'Next')),
+           column(1,
+                  actionButton('reset', 'Reset'))),
 
   fluidRow(id = 'initEditor')
 )
@@ -41,44 +38,102 @@ server <- function(input, output, session) {
   observe({
     autoUpdate()
 
-    initiative$df <<- initiative$df
-
     for (char in initiative$df$Character) {
       bool <- paste('length(input$', char, 'Init) == 0', sep = '')
+      removeFinder <- paste('input$', char, 'Remove', sep = '')
       if (eval(parse(text = bool))) {
-        insertUI(selector = '#initEditor',
-                 where = 'afterEnd',
-                 ui = fluidRow(id = paste(char, 'Editor', sep = ''),
-                               column(1, numericInput(paste(char, 'Init', sep = ''), char,
-                                            initiative$df$Initiative[initiative$df$Character == char])),
-                               column(1, checkboxInput(paste(char, 'Remove', sep = ''), 'Remove'))))
+        insertUI(
+          selector = '#initEditor',
+          where = 'afterEnd',
+          session = session,
+          ui = fluidRow(
+            id = paste(char, 'Editor', sep = ''),
+            column(
+              1,
+              numericInput(
+                paste(char, 'Init', sep = ''),
+                char,
+                initiative$df$Initiative[initiative$df$Character == char]
+              )
+            ),
+            column(1, checkboxInput(
+              paste(char, 'Remove', sep = ''), 'Remove'
+            ))
+          )
+        )
       } else {
         removeFinder <- paste('input$', char, 'Remove', sep = '')
         if (eval(parse(text = removeFinder))) {
-          initiative$df <<- initiative$df[initiative$df$char == char,]
-
-          removeUI(selector = paste('#', char, 'Editor', sep = ''))
-        } else {
-          initFinder <- paste('input$', char, 'Init', sep = '')
-          val = eval(parse(text = initFinder))
-          initiative$df$Initiative[initiative$df$Character == char] <<- val
+          updateCheckboxInput(session, paste(char, 'Remove', sep = ''), value = FALSE)
+          #updateNumericInput(session, paste(char, 'Init', sep = ''), value = 1996)
+          initiative$df <<-
+            initiative$df[!initiative$df$Character == char, ]
+          runjs(paste0(
+            "$('#",
+            char,
+            "Editor').css('display','none')"
+          ))
         }
       }
+      tmp <- eval(parse(text = paste0('input$', char, 'Init')))
+      try({
+        initiative$df$Initiative[initiative$df$Character == char] <<- tmp
+      }, silent = TRUE)
     }
   })
 
+  observeEvent(input$nextTurn, {
+    if ('<-' %in% initiative$df$Turn) {
+      idx <- which(initiative$df$Turn == '<-')
+      initiative$df$Turn[idx] <- '*'
+      if (idx == length(initiative$df$Turn)) {
+        idx <- 1
+      } else {
+        idx <- idx + 1
+      }
+    } else {
+      idx <- 1
+    }
+    initiative$df$Turn[idx] <- '<-'
+  })
+
   observeEvent(input$reset, {
-    initiative$df <<- data.frame(Character = character(),
-                                 Initiative = double(),
-                                 Order = integer())
+    for (char in initiative$df$Character) {
+      runjs(paste0("$('#", char, "Editor').css('display','none')"))
+    }
+
+    initiative$df <<- data.frame(
+      Character = character(),
+      Initiative = double(),
+      Turn = integer()
+    )
   })
 
   observeEvent(input$addChar, {
     if (input$charName != '' & !is.nan(input$initVal)) {
-      initiative$df <<- rbind(initiative$df,
-                              data.frame(Character = input$charName,
-                                         Initiative = input$initVal,
-                                         Order = -1))
+      tmp <- rbind(
+        initiative$df,
+        data.frame(
+          Character = input$charName,
+          Initiative = input$initVal,
+          Turn = '*'
+        )
+      )
+      initiative$df <<- tmp
+
+      bool <-
+        paste('length(input$', input$charName, 'Init) == 0', sep = '')
+      if (!eval(parse(text = bool))) {
+        runjs(paste0(
+          "$('#",
+          input$charName,
+          "Editor').css('display','')"
+        ))
+        updateNumericInput(session,
+                           paste(input$charName, 'Init', sep = ''),
+                           value = input$initVal)
+      }
+
       updateTextInput(session, 'charName', value = '')
       updateNumericInput(session, 'initVal', value = NaN)
     }
@@ -87,7 +142,9 @@ server <- function(input, output, session) {
   output$table <- renderTable({
     df <- initiative$df
 
-    df[sort(df$Initiative, index.return = TRUE, decreasing = TRUE)$ix,]
+    df[sort(df$Initiative,
+            index.return = TRUE,
+            decreasing = TRUE)$ix, ]
   })
 }
 
